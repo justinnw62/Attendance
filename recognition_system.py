@@ -15,7 +15,7 @@ class AttendanceSystem:
         
         self.matching_threshold = 0.4
         self.attendance_log = []
-        self.last_seen = {}  # Track re-entries
+        self.last_seen = {}  # Track re-entries in memory
         
         # Performance metrics
         self.fps = 0
@@ -42,6 +42,10 @@ class AttendanceSystem:
         """Simple motion detection"""
         if prev_frame is None:
             return True
+        
+        # Check if frames have the same size
+        if frame.shape != prev_frame.shape:
+            return True  # Can't compare different sizes, assume motion
         
         # Convert to grayscale
         gray1 = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
@@ -92,7 +96,7 @@ class AttendanceSystem:
                 student_id = self.known_ids[best_match_idx]
                 confidence = 1 - best_distance
                 
-                # Check if re-entry (within 5 minutes)
+                # Check if re-entry (within 10 minutes)
                 is_reentry = self.check_reentry(student_id)
                 
                 results.append({
@@ -106,14 +110,54 @@ class AttendanceSystem:
         
         return results
     
+    def get_last_attendance_time(self, student_id):
+        """Get timestamp of last attendance from DB to handle program restarts"""
+        try:
+            conn = sqlite3.connect('data/attendance.db')
+            cursor = conn.cursor()
+            # Get the most recent timestamp for this student
+            cursor.execute('''
+                SELECT timestamp FROM attendance_logs 
+                WHERE student_id = ? 
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            ''', (student_id,))
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                # Convert string time to timestamp
+                dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                return dt.timestamp()
+        except Exception as e:
+            print(f"Error checking DB time: {e}")
+            
+        return None
+    
     def check_reentry(self, student_id):
-        """Check if student re-entering within grace period"""
+        """Check if student appeared within the last 10 minutes (600 seconds)"""
         current_time = time.time()
+        
+        # 1. Check Database first (most reliable - works after restart)
+        last_db_time = self.get_last_attendance_time(student_id)
+        
+        if last_db_time:
+            time_diff = current_time - last_db_time
+            
+            # If seen within last 600 seconds (10 minutes)
+            if time_diff < 600: 
+                return True  # It IS a re-entry (Ignore it)
+        
+        # 2. Fallback to memory (for current session)
         if student_id in self.last_seen:
             time_diff = current_time - self.last_seen[student_id]
-            if time_diff > 300:  # 5 minutes grace period
-                return True
+            
+            # If seen within last 600 seconds (10 minutes)
+            if time_diff < 600:
+                return True  # It IS a re-entry (Ignore it)
         
+        # If we get here, it has been > 10 minutes (or first time seeing them)
+        # Update last seen time and return False (Not a re-entry)
         self.last_seen[student_id] = current_time
         return False
     
@@ -153,7 +197,16 @@ class AttendanceSystem:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
-        prev_frame = None
+        # Give camera time to warm up
+        time.sleep(0.5)
+        
+        # Read first frame to initialize prev_frame
+        ret, prev_frame = cap.read()
+        if not ret:
+            print("❌ Failed to capture initial frame")
+            cap.release()
+            return
+        
         frame_count = 0
         start_time = time.time()
         
@@ -330,6 +383,7 @@ class AttendanceSystem:
             print(f"   FPS: {self.fps:.1f}")
         
         conn.close()
+
 
 if __name__ == "__main__":
     system = AttendanceSystem()

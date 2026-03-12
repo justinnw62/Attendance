@@ -1,0 +1,44 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.card {
+    border-radius: 10px;
+    border: none;
+}
+
+.card-header {
+    border-radius: 10px 10px 0 0 !important;
+}
+
+video {
+    background: #000;
+    border-radius: 8px;
+}
+
+.img-thumbnail {
+    border-radius: 8px;
+    transition: transform 0.2s;
+}
+
+.img-thumbnail:hover {
+    transform: scale(1.1);
+}
+
+.btn {
+    border-radius: 8px;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+#angleInstruction {
+    font-size: 1.2rem;
+    min-height: 40px;
+}
+
+#capturedGrid {
+    max-height: 200px;
+    overflow-y: auto;
+}

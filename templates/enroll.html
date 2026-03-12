@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">Student Enrollment</div>
+            <div class="card-body">
+                <form id="enrollForm">
+                    <div class="mb-3">
+                        <label>Student ID</label>
+                        <input type="text" name="student_id" class="form-control" required placeholder="e.g. S004">
+                    </div>
+                    <div class="mb-3">
+                        <label>Full Name</label>
+                        <input type="text" name="full_name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Programme</label>
+                        <input type="text" name="programme" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Course</label>
+                        <select name="course_id" class="form-select">
+                            <option value="CS101">CS101 - Intro to Programming</option>
+                            <option value="CS102">CS102 - Data Structures</option>
+                            <option value="BUS201">BUS201 - Business Management</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 text-center">
+                        <label class="form-label">Capture Face Photo</label>
+                        <video id="video" width="320" height="240" autoplay class="border rounded"></video>
+                        <canvas id="canvas" width="320" height="240" class="d-none"></canvas>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-success" onclick="takePhoto()">📸 Capture
+                                Photo</button>
+                        </div>
+                        <img id="photoPreview" class="mt-2 border rounded d-none" width="320">
+                        <input type="hidden" name="image_data" id="image_data">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Submit Enrollment</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const photoPreview = document.getElementById('photoPreview');
+    const imageInput = document.getElementById('image_data');
+
+    // Start Webcam
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => { video.srcObject = stream; })
+        .catch(err => { alert("Camera access denied"); });
+
+    function takePhoto() {
+        canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+        const dataURL = canvas.toDataURL('image/png');
+        photoPreview.src = dataURL;
+        photoPreview.classList.remove('d-none');
+        imageInput.value = dataURL;
+    }
+
+    document.getElementById('enrollForm').onsubmit = async function (e) {
+        e.preventDefault();
+        if (!imageInput.value) { alert("Please capture a photo first"); return; }
+
+        const formData = new FormData(this);
+        const response = await fetch('/student/enroll', { method: 'POST', body: formData });
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            alert(result.message);
+            window.location.href = '/';
+        } else {
+            alert("Error: " + result.message);
+        }
+    };
+</script>
+{% endblock %}
