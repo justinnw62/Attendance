@@ -84,15 +84,15 @@ def init_db():
         ('BUS201', 'Business Management', 'Fall 2025');
         
         INSERT INTO sessions (course_id, session_date, start_time, end_time, room, grace_period_minutes) VALUES
-        ('CS101', date('now'), '16:00', '18:00', 'Classroom 1', 10),
-        ('CS102', date('now'), '16:00', '18:00', 'Classroom 2', 10),
-        ('BUS201', date('now'), '16:00', '18:00', 'Classroom 3', 10);
+        ('CS101', date('now'), '16:45', '18:00', 'Classroom 1', 10),
+        ('CS102', date('now'), '16:45', '18:00', 'Classroom 2', 10),
+        ('BUS201', date('now'), '16:45', '18:00', 'Classroom 3', 10);
         ''')
         
         print("✅ HARDCODED Course Schedule: ")
-        print("   CS101 → Classroom 1 (16:00 - 18:00) ")
-        print("   CS102 → Classroom 2 (16:00 - 18:00) ")
-        print("   BUS201 → Classroom 3 (16:00 - 18:00) ")
+        print("   CS101 → Classroom 1 (16:45 - 18:00) ")
+        print("   CS102 → Classroom 2 (16:45 - 18:00) ")
+        print("   BUS201 → Classroom 3 (16:45 - 18:00) ")
 
     conn.commit()
     conn.close()

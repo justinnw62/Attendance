@@ -405,8 +405,8 @@ if __name__ == "__main__":
     mp.set_start_method('spawn', force=True)
     
     # RTSP Examples (Update with your actual credentials)
-    source1 = "rtsp://Classroom1:12345678@192.168.0.206:554/stream1"
-    source2 = "rtsp://Classroom2:12345678@192.168.0.75:554/stream1"
+    source1 = "rtsp://Classroom1:12345678@192.168.0.101:554/stream1"
+    source2 = "rtsp://Classroom2:12345678@192.168.0.222:554/stream1"
 
     print("="*60)
     print("STARTING MULTI-CLASSROOM ATTENDANCE SYSTEM (DeepFace) ")
