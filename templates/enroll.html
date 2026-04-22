@@ -1,84 +1,203 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">Student Enrollment</div>
-            <div class="card-body">
-                <form id="enrollForm">
-                    <div class="mb-3">
-                        <label>Student ID</label>
-                        <input type="text" name="student_id" class="form-control" required placeholder="e.g. S004">
-                    </div>
-                    <div class="mb-3">
-                        <label>Full Name</label>
-                        <input type="text" name="full_name" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label>Programme</label>
-                        <input type="text" name="programme" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label>Course</label>
-                        <select name="course_id" class="form-select">
-                            <option value="CS101">CS101 - Intro to Programming</option>
-                            <option value="CS102">CS102 - Data Structures</option>
-                            <option value="BUS201">BUS201 - Business Management</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3 text-center">
-                        <label class="form-label">Capture Face Photo</label>
-                        <video id="video" width="320" height="240" autoplay class="border rounded"></video>
-                        <canvas id="canvas" width="320" height="240" class="d-none"></canvas>
-                        <div class="mt-2">
-                            <button type="button" class="btn btn-success" onclick="takePhoto()">📸 Capture
-                                Photo</button>
-                        </div>
-                        <img id="photoPreview" class="mt-2 border rounded d-none" width="320">
-                        <input type="hidden" name="image_data" id="image_data">
-                    </div>
-
-                    <button type="submit" class="btn btn-primary w-100">Submit Enrollment</button>
-                </form>
-            </div>
+<div class="container">
+    <h2>Student Enrollment</h2>
+    <form id="enrollForm">
+        <div class="form-group">
+            <label>Student ID</label>
+            <input type="text" name="student_id" required class="form-control">
         </div>
-    </div>
+        <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" name="full_name" required class="form-control">
+        </div>
+        <div class="form-group">
+            <label>Programme</label>
+            <input type="text" name="programme" required class="form-control">
+        </div>
+        <div class="form-group">
+            <label>Course</label>
+            <select name="course_id" class="form-control" id="courseSelect">
+                <option value="CS101">CS101 - Intro to Programming (Classroom 1)</option>
+                <option value="CS102">CS102 - Data Structures (Classroom 2)</option>
+                <option value="BUS201">BUS201 - Business Management (Classroom 3)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Capture Face Photo</label>
+
+            <!-- Video Container -->
+            <div id="videoContainer" class="mb-3">
+                <video id="video" width="640" height="480" autoplay playsinline class="border rounded"></video>
+            </div>
+
+            <canvas id="canvas" style="display:none;"></canvas>
+
+            <!-- Captured Photo Display -->
+            <div id="capturedPhotoContainer" style="display:none;" class="mb-3">
+                <label>Captured Photo:</label>
+                <div class="position-relative d-inline-block">
+                    <img id="capturedPhoto" class="img-thumbnail" style="max-width: 640px; width: 100%;"
+                        alt="Captured photo will appear here">
+                </div>
+                <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="retakePhoto()">🔄 Retake
+                        Photo</button>
+                </div>
+            </div>
+
+            <div class="mt-2">
+                <button type="button" class="btn btn-primary" id="captureBtn" onclick="capturePhoto()">📸 Capture
+                    Photo</button>
+            </div>
+            <input type="hidden" name="image_data" id="image_data">
+            <small class="form-text text-muted">Please ensure your face is clearly visible and well-lit.</small>
+        </div>
+
+        <button type="submit" class="btn btn-success mt-3">Submit Enrollment</button>
+    </form>
+
+    <div id="resultMessage" class="mt-3" style="display:none;"></div>
 </div>
 
 <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
-    const photoPreview = document.getElementById('photoPreview');
     const imageInput = document.getElementById('image_data');
+    const resultDiv = document.getElementById('resultMessage');
+    const capturedPhotoContainer = document.getElementById('capturedPhotoContainer');
+    const capturedPhoto = document.getElementById('capturedPhoto');
+    const captureBtn = document.getElementById('captureBtn');
+    const videoContainer = document.getElementById('videoContainer');
+    let photoCaptured = false;
+    let stream = null;
 
-    // Start Webcam
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => { video.srcObject = stream; })
-        .catch(err => { alert("Camera access denied"); });
-
-    function takePhoto() {
-        canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
-        const dataURL = canvas.toDataURL('image/png');
-        photoPreview.src = dataURL;
-        photoPreview.classList.remove('d-none');
-        imageInput.value = dataURL;
+    // Initialize webcam
+    async function initWebcam() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: "user"
+                },
+                audio: false
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            console.error("Error accessing webcam: ", err);
+            alert("Error: Could not access webcam. Please ensure you have granted camera permissions.");
+        }
     }
 
-    document.getElementById('enrollForm').onsubmit = async function (e) {
+    // Start webcam on page load
+    initWebcam();
+
+    function capturePhoto() {
+        // Check if video is playing
+        if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+            alert('Camera is not ready. Please wait a moment and try again.');
+            return;
+        }
+
+        // Set canvas size to match video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Draw current video frame to canvas
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Convert to base64
+        const imageData = canvas.toDataURL('image/jpeg', 0.9);
+
+        // Display the captured photo
+        capturedPhoto.src = imageData;
+        capturedPhotoContainer.style.display = 'block';
+
+        // Hide video container and capture button
+        videoContainer.style.display = 'none';
+        captureBtn.style.display = 'none';
+
+        // Store the image data
+        imageInput.value = imageData;
+        photoCaptured = true;
+
+        // Scroll to captured photo
+        setTimeout(() => {
+            capturedPhotoContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+    }
+
+    function retakePhoto() {
+        // Clear captured photo
+        capturedPhoto.src = '';
+        capturedPhotoContainer.style.display = 'none';
+
+        // Show video container and capture button
+        videoContainer.style.display = 'block';
+        captureBtn.style.display = 'inline-block';
+
+        // Clear image data
+        imageInput.value = '';
+        photoCaptured = false;
+
+        // Reinitialize webcam if stream was stopped
+        if (!stream || stream.getVideoTracks().some(track => track.readyState === 'ended')) {
+            initWebcam();
+        }
+    }
+
+    // Form submission
+    document.getElementById('enrollForm').addEventListener('submit', function (e) {
         e.preventDefault();
-        if (!imageInput.value) { alert("Please capture a photo first"); return; }
+
+        // Check if photo was captured
+        if (!photoCaptured) {
+            alert('Please capture a photo before submitting.');
+            return;
+        }
 
         const formData = new FormData(this);
-        const response = await fetch('/student/enroll', { method: 'POST', body: formData });
-        const result = await response.json();
 
-        if (result.status === 'success') {
-            alert(result.message);
-            window.location.href = '/';
-        } else {
-            alert("Error: " + result.message);
-        }
-    };
+        fetch('/student/enroll', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                resultDiv.style.display = 'block';
+                if (data.status === 'success') {
+                    resultDiv.className = 'alert alert-success';
+                    resultDiv.innerHTML = `
+                    <strong>✅ Success!</strong> ${data.message}<br><br>
+                    🏫 <strong>Classroom:</strong> ${data.classroom}<br>
+                    ⏰ <strong>Class Time:</strong> ${data.start_time} - ${data.end_time}<br>
+                    ⏳ <strong>Grace Period:</strong> 10 minutes<br>
+                    🚨 <strong>Late After:</strong> Grace period ends
+                `;
+
+                    // Stop webcam stream
+                    if (stream) {
+                        const tracks = stream.getTracks();
+                        tracks.forEach(track => track.stop());
+                        stream = null;
+                    }
+
+                    // Disable form
+                    document.getElementById('enrollForm').reset();
+                    retakePhoto();
+                } else {
+                    resultDiv.className = 'alert alert-danger';
+                    resultDiv.textContent = data.message;
+                }
+            })
+            .catch(err => {
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'alert alert-danger';
+                resultDiv.textContent = 'Error: ' + err;
+            });
+    });
 </script>
 {% endblock %}

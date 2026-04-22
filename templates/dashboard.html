@@ -1,73 +1,132 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>👨‍🏫 Teacher Dashboard</h2>
-    <a href="/teacher/logout" class="btn btn-danger">Logout</a>
-</div>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>👨🏫 Teacher Dashboard</h2>
+        <a href="/teacher/logout" class="btn btn-outline-danger">Logout</a>
+    </div>
 
-<div class="row">
-    <!-- Manual Attendance -->
-    <div class="col-md-4">
-        <div class="card shadow mb-4">
-            <div class="card-header bg-success text-white">Manual Attendance</div>
-            <div class="card-body">
-                <form action="/teacher/manual_attendance" method="POST">
-                    <div class="mb-3">
-                        <label>Student ID</label>
-                        <input type="text" name="student_id" class="form-control" list="studentList" required>
-                        <datalist id="studentList">
-                            {% for student in students %}
-                            <option value="{{ student.student_id }}">
-                                {% endfor %}
-                        </datalist>
-                    </div>
-                    <div class="mb-3">
-                        <label>Status</label>
-                        <select name="status" class="form-select">
-                            <option value="present">Present</option>
-                            <option value="absent">Absent</option>
-                            <option value="late">Late</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">Record Attendance</button>
-                </form>
-                <small class="text-muted">Use this if the automated system fails.</small>
-            </div>
+    <!-- Manual Attendance Form -->
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white"> Manual Attendance Entry</div>
+        <div class="card-body">
+            <form action="/teacher/manual_attendance" method="POST" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Select Student</label>
+                    <select name="student_id" class="form-select" required>
+                        <option value="">-- Select --</option>
+                        {% for student in students %}
+                        <option value="{{ student.student_id }}">{{ student.student_id }} - {{ student.full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select" required>
+                        <option value="present">Present</option>
+                        <option value="late">Late</option>
+                        <option value="absent">Absent</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Classroom</label>
+                    <select name="classroom" class="form-select">
+                        <option value="Classroom 1">Classroom 1</option>
+                        <option value="Classroom 2">Classroom 2</option>
+                        <option value="Classroom 3">Classroom 3</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-success w-100">✅ Record</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <!-- Attendance Logs -->
-    <div class="col-md-8">
-        <div class="card shadow">
-            <div class="card-header bg-dark text-white">Recent Attendance Logs</div>
-            <div class="card-body">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Student</th>
-                            <th>ID</th>
-                            <th>Method</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for log in logs %}
-                        <tr>
-                            <td>{{ log.timestamp }}</td>
-                            <td>{{ log.full_name }}</td>
-                            <td>{{ log.student_id }}</td>
-                            <td>
-                                <span class="badge {{ 'bg-primary' if log.method == 'automatic' else 'bg-warning' }}">
-                                    {{ log.method }}
-                                </span>
-                            </td>
-                            <td>{{ log.status }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+    <!-- Schedule -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">📅 Today's Course Schedule</div>
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Course</th>
+                        <th>Time</th>
+                        <th>Classroom</th>
+                        <th>Grace Period</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for course in courses %}
+                    <tr>
+                        <td>
+                            <strong>{{ course.course_name }}</strong><br>
+                            <small class="text-muted">{{ course.course_id }}</small>
+                        </td>
+                        <td>
+                            <strong>{{ course.start_time }} - {{ course.end_time }}</strong>
+                        </td>
+                        <td>{{ course.room }}</td>
+                        <td>{{ course.grace_period_minutes }} min</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not courses %}
+                    <tr>
+                        <td colspan="4" class="text-center py-3">No sessions scheduled for today.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="card">
+        <div class="card-header bg-dark text-white"> Recent Attendance Logs</div>
+        <div class="card-body p-0">
+            {% if logs %}
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Student</th>
+                        <th>ID</th>
+                        <th>Classroom</th>
+                        <th>Method</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>{{ log.timestamp }}</td>
+                        <td><strong>{{ log.full_name }}</strong></td>
+                        <td>{{ log.student_id }}</td>
+                        <td>{{ log.classroom_id or 'N/A' }}</td>
+                        <td>
+                            {% if log.method == 'automatic' %}
+                            <span class="badge bg-info">Automatic</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Manual</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.status == 'present' %}
+                            <span class="badge bg-success">Present</span>
+                            {% elif log.status == 'late' %}
+                            <span class="badge bg-warning text-dark">Late</span>
+                            {% else %}
+                            <span class="badge bg-danger">{{ log.status|capitalize }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-3 text-center text-muted">No attendance records yet.</div>
+            {% endif %}
         </div>
     </div>
 </div>

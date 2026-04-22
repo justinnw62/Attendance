@@ -1,5 +1,6 @@
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333;
 }
 
 .card {
@@ -11,34 +12,66 @@ body {
     border-radius: 10px 10px 0 0 !important;
 }
 
-video {
-    background: #000;
-    border-radius: 8px;
+.card-body {
+    color: #333 !important;
 }
 
-.img-thumbnail {
-    border-radius: 8px;
-    transition: transform 0.2s;
+.table {
+    color: #333 !important;
 }
 
-.img-thumbnail:hover {
-    transform: scale(1.1);
+.table thead {
+    background-color: #e9ecef;
+    color: #495057 !important;
+    font-weight: 600;
 }
 
-.btn {
-    border-radius: 8px;
+td,
+th {
+    color: #333 !important;
+    vertical-align: middle;
 }
 
-.navbar-brand {
-    font-weight: bold;
+/* BADGES - Forced Black Text for Visibility */
+.badge {
+    font-weight: 600;
+    padding: 6px 12px;
 }
 
-#angleInstruction {
-    font-size: 1.2rem;
-    min-height: 40px;
+.badge-success,
+.badge-warning,
+.badge-info {
+    color: #212529 !important;
+    /* Black text for visibility */
 }
 
-#capturedGrid {
-    max-height: 200px;
-    overflow-y: auto;
+.badge-success {
+    background-color: #28a745 !important;
+}
+
+.badge-warning {
+    background-color: #ffc107 !important;
+}
+
+.badge-info {
+    background-color: #17a2b8 !important;
+}
+
+/* Keep white text only on dark backgrounds */
+.badge-secondary {
+    background-color: #6c757d !important;
+    color: #fff !important;
+}
+
+.badge-danger {
+    background-color: #dc3545 !important;
+    color: #fff !important;
+}
+
+.text-dark {
+    color: #212529 !important;
+}
+
+.text-secondary {
+    color: #6c757d !important;
 }
