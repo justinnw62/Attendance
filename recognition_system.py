@@ -32,6 +32,12 @@ class AttendanceSystem:
         # Load Haar Cascade for fast UI bounding boxes
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
+    def _get_base_room(self):
+        """Maps 'Classroom 1a' or '1b' back to 'Classroom 1' for DB queries"""
+        if self.classroom_id.endswith(('a', 'b')):
+            return self.classroom_id[:-1]
+        return self.classroom_id
+
     def load_known_faces(self):
         print(f"📂 [{self.classroom_id}] Loading known faces...  ")
         self.known_encodings = []
@@ -52,13 +58,16 @@ class AttendanceSystem:
     def load_course_schedule(self):
         try:
             conn = sqlite3.connect('data/attendance.db')
+            conn.execute("PRAGMA journal_mode=WAL;")  # Prevents locking with 3 processes
             cursor = conn.cursor()
+            
+            base_room = self._get_base_room()
             cursor.execute('''
                 SELECT start_time, grace_period_minutes 
                 FROM sessions 
                 WHERE room = ? AND session_date = ?
                 LIMIT 1
-            ''', (self.classroom_id, datetime.now().date())) 
+            ''', (base_room, datetime.now().date())) 
             result = cursor.fetchone()
             conn.close()
             
@@ -79,11 +88,14 @@ class AttendanceSystem:
     def is_student_enrolled_in_classroom(self, student_id):
         try:
             conn = sqlite3.connect('data/attendance.db')
+            conn.execute("PRAGMA journal_mode=WAL;")
             cursor = conn.cursor()
+            
+            base_room = self._get_base_room()
             cursor.execute('''
                 SELECT enrollment_id FROM enrollments 
                 WHERE student_id = ? AND classroom_id = ?
-            ''', (student_id, self.classroom_id))
+            ''', (student_id, base_room))
             result = cursor.fetchone()
             conn.close()
             return result is not None
@@ -106,22 +118,20 @@ class AttendanceSystem:
             current_time = datetime.now()
             start_hour, start_minute = map(int, self.course_start_time.split(':'))
             
-            # Create a datetime object for the class start today
             class_start_dt = current_time.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
             
-            # Define thresholds based on your request
-            early_threshold = class_start_dt - timedelta(minutes=15) # 15 mins before
-            present_threshold = class_start_dt + timedelta(minutes=15) # 15 mins after start (Present window ends here)
-            late_threshold = class_start_dt + timedelta(minutes=30)    # 30 mins after start (Late window ends here)
+            early_threshold = class_start_dt - timedelta(minutes=15)
+            present_threshold = class_start_dt + timedelta(minutes=15)
+            late_threshold = class_start_dt + timedelta(minutes=30)
 
             if current_time < early_threshold:
                 return "too_early"
             elif current_time <= present_threshold:
-                return "present" # Between 15 mins before and 15 mins after start
+                return "present"
             elif current_time <= late_threshold:
-                return "late" # Between 15 mins and 30 mins after start
+                return "late"
             else:
-                return "absent" # After 30 mins
+                return "absent"
                 
         except Exception as e:
             print(f"Error calculating status: {e}  ")
@@ -131,10 +141,7 @@ class AttendanceSystem:
         if len(self.known_encodings) == 0:
             return []
 
-        # Get current status to display on screen
         current_attendance_status = self.get_attendance_status()
-
-        # Fast face detection for UI boxes
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
@@ -145,15 +152,12 @@ class AttendanceSystem:
                 continue
                 
             try:
-                # Extract embedding using DeepFace
                 reps = DeepFace.represent(img_path=face_roi, model_name="Facenet", 
                                           detector_backend="skip", enforce_detection=False)
                 if not reps:
                     continue
                     
                 embedding = np.array(reps[0]['embedding'])
-                
-                # Cosine distance comparison
                 distances = [cosine(embedding, known_enc) for known_enc in self.known_encodings]
                 best_match_idx = np.argmin(distances)
                 best_distance = distances[best_match_idx]
@@ -167,18 +171,10 @@ class AttendanceSystem:
                         continue
                     
                     is_reentry = self.check_reentry(student_id)
-                    
-                    # Determine status to log
                     status_to_log = current_attendance_status
-                    
-                    # If re-entry, keep status as re-entry
                     final_status = "re-entry" if is_reentry else status_to_log
                     
-                    # OpenCV face location format: (top, right, bottom, left)
                     location = (y, x+w, y+h, x)
-                    
-                    # attendance_valid is False if "too_early" or "absent" (optional, usually we don't log absent automatically)
-                    # But based on your request, we log "Late" and "Present".
                     attendance_valid = current_attendance_status not in ["too_early", "absent"]
                     
                     results.append({
@@ -199,12 +195,17 @@ class AttendanceSystem:
     def get_last_attendance_time(self, student_id):
         try:
             conn = sqlite3.connect('data/attendance.db')
+            conn.execute("PRAGMA journal_mode=WAL;")
             cursor = conn.cursor()
+            
+            # Check across both doors of the same classroom to prevent duplicate logs
+            base_room = self._get_base_room()
             cursor.execute('''
                 SELECT timestamp FROM attendance_logs 
-                WHERE student_id = ? AND classroom_id = ?
+                WHERE student_id = ? AND classroom_id LIKE ?
                 ORDER BY timestamp DESC LIMIT 1
-            ''', (student_id, self.classroom_id))
+            ''', (student_id, f"{base_room}%"))
+            
             result = cursor.fetchone()
             conn.close()
             if result:
@@ -226,30 +227,32 @@ class AttendanceSystem:
 
     def log_attendance(self, recognition_result):
         """Log attendance and send email notification"""
-        # Only log if valid (not too_early or absent)
         if not recognition_result.get('attendance_valid', True):
             return None, None
 
         conn = sqlite3.connect('data/attendance.db')
+        conn.execute("PRAGMA journal_mode=WAL;")
         cursor = conn.cursor()
         
         cursor.execute('SELECT full_name FROM students WHERE student_id = ?', (recognition_result['student_id'],))
         student_row = cursor.fetchone()
         student_name = student_row[0] if student_row else "Unknown"
         
+        base_room = self._get_base_room()
         cursor.execute('''
             SELECT c.course_id, c.course_name 
             FROM sessions s
             JOIN courses c ON s.course_id = c.course_id
             WHERE s.room = ? AND s.session_date = ?
             LIMIT 1
-        ''', (self.classroom_id, datetime.now().date()))
+        ''', (base_room, datetime.now().date()))
         course_row = cursor.fetchone()
         course_code = course_row[0] if course_row else "N/A"
         course_name = course_row[1] if course_row else "Unknown Class"
         
         status = recognition_result['status']
         
+        # Logs with specific door ID (e.g., "Classroom 1a")
         cursor.execute('''
             INSERT INTO attendance_logs (student_id, classroom_id, timestamp, confidence, status)
             VALUES (?, ?, ?, ?, ?)
@@ -263,19 +266,18 @@ class AttendanceSystem:
         conn.commit()
         conn.close()
         
-        # Send email notification
         utils.send_attendance_email(recognition_result['student_id'], student_name, course_code, course_name, status)
         
         return student_name, status
 
     def get_status_color(self, status):
         colors = { 
-            'present': (0, 255, 0),      # Green
-            'late': (0, 165, 255),       # Orange
-            're-entry': (255, 255, 0),   # Yellow
-            'too_early': (0, 0, 255),    # Red
-            'absent': (0, 0, 255),       # Red
-            'unknown': (0, 0, 255)       # Red
+            'present': (0, 255, 0),
+            'late': (0, 165, 255),
+            're-entry': (255, 255, 0),
+            'too_early': (0, 0, 255),
+            'absent': (0, 0, 255),
+            'unknown': (0, 0, 255)
         }
         return colors.get(status, colors['unknown'])
 
@@ -312,14 +314,14 @@ class AttendanceSystem:
         print(f"🕐 Course Start: {self.course_start_time}  ")
         print(f"✅ Present Window: Until {self.course_start_time} + 15 mins  ")
         print(f"️ Late Window: Until {self.course_start_time} + 30 mins  ")
-        print(f"🏫 Only students enrolled in {self.classroom_id} will be recorded  ")
+        print(f"🏫 Only students enrolled in {self._get_base_room()} will be recorded  ")
         print(f"📧 Email notifications enabled  ")
         print(f"{'='*50}\n  ")
         
         frame_count = 0
         start_time = time.time()
         last_recognition_time = 0
-        recognition_interval = 2.0  # Run recognition every 2 seconds
+        recognition_interval = 2.0
         
         while True:
             ret, frame = cap.read()
@@ -335,7 +337,6 @@ class AttendanceSystem:
                 self.fps = 30 / (current_time - start_time)
                 start_time = current_time
                 
-            # Skip frames for performance
             if frame_count % 3 != 0:
                 cv2.putText(frame, f"Room: {self.classroom_id} ", (10, 30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
@@ -362,7 +363,6 @@ class AttendanceSystem:
                     confidence = recognition['confidence']
                     status_display = status.upper().replace('-', ' ')
                     
-                    # Show "WAIT" if too early
                     if status == "too_early":
                         label_text = f"{student_name} | WAIT "
                     elif status == "absent":
@@ -373,13 +373,11 @@ class AttendanceSystem:
                     cv2.putText(frame, label_text, (left + 5, top - 8), 
                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
                     
-                    # Log attendance (only if valid and not re-entry)
                     if status != 're-entry' and recognition.get('attendance_valid', False):
                         student_name, status_str = self.log_attendance(recognition)
                         if student_name:
                             print(f"✅ [{self.classroom_id}] {student_name} ({recognition['student_id']}) - {status_str.upper()}  ")
                         
-            # UI Overlays
             current_status = self.get_attendance_status().upper()
             status_color = self.get_status_color(self.get_attendance_status())
             
@@ -403,31 +401,39 @@ def run_classroom(camera_source, classroom_id):
 
 if __name__ == "__main__":
     mp.set_start_method('spawn', force=True)
-    
-    # RTSP Examples (Update with your actual credentials)
-    source1 = "rtsp://Classroom1:12345678@192.168.0.101:554/stream1"
-    source2 = "rtsp://Classroom2:12345678@192.168.0.222:554/stream1"
+
+    # 📷 RTSP URLs for 3 Classrooms/Doors (Update with your actual credentials)
+    source1 = "rtsp://Classroom1a:12345678@192.168.0.30:554/stream1"  # 🚪 Door A
+    source2 = "rtsp://Classroom1b:12345678@192.168.0.101:554/stream1"  # 🚪 Door B
+    source3 = "rtsp://Classroom2:12345678@192.168.0.222:554/stream1"  # 🏫 Classroom 2
 
     print("="*60)
-    print("STARTING MULTI-CLASSROOM ATTENDANCE SYSTEM (DeepFace) ")
+    print("STARTING MULTI-DOOR ATTENDANCE SYSTEM (DeepFace)  ")
     print("="*60)
-    print("⏰ Logic: Present until Start+15m -> Late until Start+30m -> Absent")
-    print("⚠️ Students will ONLY be recorded in their assigned classroom ")
-    print("="*60 + "\n ")
+    print("🚪 Classroom 1a (Door A) | Classroom 1b (Door B) | Classroom 2  ")
+    print("⏰ Logic: Present until Start+15m -> Late until Start+30m -> Absent ")
+    print("⚠️ Students enrolled in 'Classroom 1' can enter via Door A or B  ")
+    print("="*60 + "\n  ")
 
-    process1 = mp.Process(target=run_classroom, args=(source1, "Classroom 1"))
-    process2 = mp.Process(target=run_classroom, args=(source2, "Classroom 2"))
+    # 🚀 Spawn 3 independent processes
+    process1 = mp.Process(target=run_classroom, args=(source1, "Classroom 1a"))
+    process2 = mp.Process(target=run_classroom, args=(source2, "Classroom 1b"))
+    process3 = mp.Process(target=run_classroom, args=(source3, "Classroom 2"))
 
     process1.start()
     process2.start()
+    process3.start()
 
     try:
         process1.join()
         process2.join()
+        process3.join()
     except KeyboardInterrupt:
-        print("\n\n🛑 Shutting down all systems...  ")
+        print("\n\n🛑 Shutting down all systems...   ")
         process1.terminate()
         process2.terminate()
+        process3.terminate()
         process1.join()
         process2.join()
-        print("✅ All systems stopped.  ")
+        process3.join()
+        print("✅ All systems stopped.   ")
